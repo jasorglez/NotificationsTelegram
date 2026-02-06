@@ -22,6 +22,8 @@ builder.Services.AddCors(options =>
             "http://localhost:4200",
             "https://localhost:4200",
             "http://66.179.240.10:5010",
+            "http://5.181.218.92:5010",
+            "http://5.181.218.92:5003",
             "http://198.71.49.16:5009",
             "https://biapp.com.mx"
         )
