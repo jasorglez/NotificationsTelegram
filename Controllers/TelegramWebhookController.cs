@@ -12,9 +12,10 @@ public class TelegramWebhookController : ControllerBase
     private readonly ITelegramService _telegramService;
     private readonly ILogger<TelegramWebhookController> _logger;
 
-    // JsonSerializerOptions compatible con Telegram.Bot v22
+    // JsonSerializerOptions compatible con Telegram.Bot v22 (snake_case → PascalCase)
     private static readonly JsonSerializerOptions TelegramJsonOptions = new()
     {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         PropertyNameCaseInsensitive = true,
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
     };
