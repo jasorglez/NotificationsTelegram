@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using NotificationsTelegram.Services;
 using Telegram.Bot.Types;
+using System.Text.Json;
 
 namespace NotificationsTelegram.Controllers;
 
@@ -23,23 +24,35 @@ public class TelegramWebhookController : ControllerBase
     /// Telegram webhook endpoint to receive updates
     /// </summary>
     [HttpPost("webhook")]
-    public async Task<IActionResult> Webhook([FromBody] Update update)
+    public async Task<IActionResult> Webhook()
     {
-        _logger.LogInformation("Received Telegram update: {UpdateId}, Type: {Type}",
-            update.Id,
-            update.Type);
+        using var reader = new StreamReader(Request.Body);
+        var json = await reader.ReadToEndAsync();
+
+        _logger.LogInformation("Received webhook payload: {Length} chars", json.Length);
 
         try
         {
+            var update = JsonSerializer.Deserialize<Update>(json);
+
+            if (update == null)
+            {
+                _logger.LogWarning("Failed to deserialize update, payload: {Json}", json);
+                return Ok();
+            }
+
+            _logger.LogInformation("Parsed Telegram update: {UpdateId}, Type: {Type}",
+                update.Id, update.Type);
+
             await _telegramService.ProcessUpdateAsync(update);
-            return Ok();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing Telegram update {UpdateId}", update.Id);
-            // Return OK to Telegram to avoid retries
-            return Ok();
+            _logger.LogError(ex, "Error processing Telegram webhook");
         }
+
+        // Always return OK to Telegram to avoid retries
+        return Ok();
     }
 
     /// <summary>
