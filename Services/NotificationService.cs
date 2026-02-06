@@ -45,12 +45,12 @@ public class NotificationService : INotificationService
 
             // Get authorizer's Telegram ID
             var authorizer = await _securityService.GetUserByIdAsync(request.IdAuthorize);
-            if (authorizer == null || string.IsNullOrEmpty(authorizer.IdTelegram))
+            if (authorizer == null || string.IsNullOrEmpty(authorizer.IdTelegram) || !long.TryParse(authorizer.IdTelegram, out _))
             {
                 return new NotificationResponse
                 {
                     Success = false,
-                    Error = $"Authorizer (ID: {request.IdAuthorize}) not found or has no Telegram ID configured"
+                    Error = $"Authorizer (ID: {request.IdAuthorize}) not found or has no valid Telegram ID (value: {authorizer?.IdTelegram ?? "null"})"
                 };
             }
 
@@ -378,9 +378,10 @@ public class NotificationService : INotificationService
         try
         {
             var solicit = await _securityService.GetUserByIdAsync(notification.IdSolicit);
-            if (solicit == null || string.IsNullOrEmpty(solicit.IdTelegram))
+            if (solicit == null || string.IsNullOrEmpty(solicit.IdTelegram) || !long.TryParse(solicit.IdTelegram, out _))
             {
-                _logger.LogWarning("Cannot notify solicit user {UserId}: no Telegram ID", notification.IdSolicit);
+                _logger.LogWarning("Cannot notify solicit user {UserId}: no valid Telegram ID (value: {TelegramId})",
+                    notification.IdSolicit, solicit?.IdTelegram ?? "null");
                 return;
             }
 
