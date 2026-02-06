@@ -12,6 +12,13 @@ public class TelegramWebhookController : ControllerBase
     private readonly ITelegramService _telegramService;
     private readonly ILogger<TelegramWebhookController> _logger;
 
+    // JsonSerializerOptions compatible con Telegram.Bot v22
+    private static readonly JsonSerializerOptions TelegramJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
+
     public TelegramWebhookController(
         ITelegramService telegramService,
         ILogger<TelegramWebhookController> logger)
@@ -30,10 +37,11 @@ public class TelegramWebhookController : ControllerBase
         var json = await reader.ReadToEndAsync();
 
         _logger.LogInformation("Received webhook payload: {Length} chars", json.Length);
+        _logger.LogDebug("Webhook payload: {Json}", json);
 
         try
         {
-            var update = JsonSerializer.Deserialize<Update>(json);
+            var update = JsonSerializer.Deserialize<Update>(json, TelegramJsonOptions);
 
             if (update == null)
             {
@@ -41,14 +49,25 @@ public class TelegramWebhookController : ControllerBase
                 return Ok();
             }
 
-            _logger.LogInformation("Parsed Telegram update: {UpdateId}, Type: {Type}",
-                update.Id, update.Type);
+            _logger.LogInformation(
+                "Parsed Telegram update: {UpdateId}, Type: {Type}, HasMessage: {HasMsg}, HasCallback: {HasCb}",
+                update.Id,
+                update.Type,
+                update.Message != null,
+                update.CallbackQuery != null);
+
+            if (update.Message != null)
+            {
+                _logger.LogInformation("Message from {From}: {Text}",
+                    update.Message.From?.FirstName ?? "unknown",
+                    update.Message.Text ?? "(no text)");
+            }
 
             await _telegramService.ProcessUpdateAsync(update);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing Telegram webhook");
+            _logger.LogError(ex, "Error processing Telegram webhook. Payload: {Json}", json);
         }
 
         // Always return OK to Telegram to avoid retries
