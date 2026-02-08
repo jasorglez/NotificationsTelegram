@@ -58,6 +58,9 @@ public class NotificationService : INotificationService
             var solicit = await _securityService.GetUserByIdAsync(request.IdSolicit);
             var solicitName = solicit?.DisplayName ?? $"Usuario {request.IdSolicit}";
 
+            // Generate access token for public document viewing
+            var accessToken = Guid.NewGuid().ToString("N");
+
             // Create notification record
             var notification = new Notification
             {
@@ -69,7 +72,8 @@ public class NotificationService : INotificationService
                 IdAuthorize = request.IdAuthorize,
                 TelegramChatId = long.TryParse(authorizer.IdTelegram, out var chatId) ? chatId : null,
                 Status = NotificationStatus.PENDING,
-                CreatedAt = DateTime.Now
+                CreatedAt = DateTime.Now,
+                AccessToken = accessToken
             };
 
             _context.Notifications.Add(notification);
@@ -78,11 +82,8 @@ public class NotificationService : INotificationService
             // Add log
             await AddLogAsync(notification.Id, LogAction.CREATED, $"Notification created for {request.DocumentType} {request.Folio}");
 
-            // Build view URL
-            var viewUrl = documentType.ViewUrl?
-                .Replace("{folio}", request.Folio)
-                .Replace("{id}", request.DocumentId.ToString())
-                ?? $"{documentType.BaseUrl}/view/{request.DocumentId}";
+            // Build view URL with public access token (no login required)
+            var viewUrl = $"https://biapp.com.mx/public/doc?token={accessToken}";
 
             // Send Telegram message
             notification.DocumentType = documentType; // Set for message building

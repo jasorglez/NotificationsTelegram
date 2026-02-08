@@ -51,6 +51,9 @@ public class Notification
 
     public bool Active { get; set; } = true;
 
+    [StringLength(100)]
+    public string? AccessToken { get; set; }
+
     // Navigation
     [ForeignKey("IdDocumentType")]
     public virtual DocumentType? DocumentType { get; set; }

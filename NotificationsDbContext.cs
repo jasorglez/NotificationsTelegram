@@ -29,6 +29,7 @@ public class NotificationsDbContext : DbContext
             entity.HasIndex(e => e.IdSolicit).HasDatabaseName("IX_Notifications_IdSolicit");
             entity.HasIndex(e => e.Folio).HasDatabaseName("IX_Notifications_Folio");
             entity.HasIndex(e => e.TelegramChatId).HasDatabaseName("IX_Notifications_TelegramChatId");
+            entity.HasIndex(e => e.AccessToken).IsUnique().HasFilter("[AccessToken] IS NOT NULL").HasDatabaseName("IX_Notifications_AccessToken");
 
             entity.HasOne(e => e.DocumentType)
                   .WithMany(d => d.Notifications)

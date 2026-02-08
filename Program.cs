@@ -93,6 +93,7 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ITelegramService, TelegramService>();
 builder.Services.AddScoped<ICallbackService, CallbackService>();
 builder.Services.AddScoped<ISecurityService, SecurityService>();
+builder.Services.AddScoped<IDocumentProxyService, DocumentProxyService>();
 
 // Logging
 builder.Services.AddLogging(logging =>
