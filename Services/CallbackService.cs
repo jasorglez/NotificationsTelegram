@@ -1,5 +1,8 @@
+using Microsoft.IdentityModel.Tokens;
 using NotificationsTelegram.DTOs;
 using NotificationsTelegram.Models;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 
@@ -9,13 +12,38 @@ public class CallbackService : ICallbackService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<CallbackService> _logger;
+    private readonly IConfiguration _configuration;
 
     public CallbackService(
         HttpClient httpClient,
-        ILogger<CallbackService> logger)
+        ILogger<CallbackService> logger,
+        IConfiguration configuration)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _configuration = configuration;
+    }
+
+    private string GenerateJwtToken()
+    {
+        var key = _configuration["Jwt:Key"];
+        var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));
+        var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.Name, "NotificationsTelegram"),
+            new Claim(ClaimTypes.Role, "Service")
+        };
+
+        var token = new JwtSecurityToken(
+            issuer: null,
+            audience: null,
+            claims: claims,
+            expires: DateTime.Now.AddMinutes(30),
+            signingCredentials: credentials);
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
     public async Task<bool> SendCallbackAsync(Notification notification, string? authorizeName)
@@ -47,10 +75,19 @@ public class CallbackService : ICallbackService
             var json = JsonSerializer.Serialize(callbackData);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            _logger.LogInformation("Sending callback to {Url} with data: {Data}", callbackUrl, json);
+            // Generate JWT token for authentication
+            var token = GenerateJwtToken();
+            _httpClient.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
-            // Send PUT request to update the document
-            var response = await _httpClient.PutAsync(callbackUrl, content);
+            _logger.LogInformation("Sending PATCH callback to {Url} with data: {Data}", callbackUrl, json);
+
+            // Send PATCH request to update the document authorization
+            var request = new HttpRequestMessage(HttpMethod.Patch, callbackUrl)
+            {
+                Content = content
+            };
+            var response = await _httpClient.SendAsync(request);
 
             if (response.IsSuccessStatusCode)
             {

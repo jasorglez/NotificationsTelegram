@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NotificationsTelegram.Models;
 
 namespace NotificationsTelegram.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class DocumentTypeController : ControllerBase
