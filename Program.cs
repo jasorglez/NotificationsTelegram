@@ -14,7 +14,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "NotificationsTelegram API", Version = "v1.0" });
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "NotificationsTelegram API 02-08-2026", Version = "v1.0" });
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
