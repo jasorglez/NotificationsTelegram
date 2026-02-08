@@ -12,6 +12,10 @@ public class DocumentProxyService : IDocumentProxyService
     private readonly ILogger<DocumentProxyService> _logger;
     private readonly IConfiguration _configuration;
 
+    // Internal microservice URLs
+    private const string SMP_BASE_URL = "http://66.179.240.10:5004";
+    private const string WAREHOUSE_BASE_URL = "http://66.179.240.10:5007";
+
     public DocumentProxyService(
         HttpClient httpClient,
         ILogger<DocumentProxyService> logger,
@@ -44,15 +48,39 @@ public class DocumentProxyService : IDocumentProxyService
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
+    private void SetAuthHeader()
+    {
+        var token = GenerateJwtToken();
+        _httpClient.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+    }
+
+    private async Task<JsonElement?> FetchJsonAsync(string url)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync(url);
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync();
+                return JsonSerializer.Deserialize<JsonElement>(json);
+            }
+            _logger.LogWarning("Failed to fetch {Url}. Status: {Status}", url, response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error fetching {Url}", url);
+        }
+        return null;
+    }
+
     public async Task<object?> GetDocumentDataAsync(string microservice, string baseUrl, string documentCode, int documentId)
     {
         try
         {
-            var token = GenerateJwtToken();
-            _httpClient.DefaultRequestHeaders.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            SetAuthHeader();
 
-            // Determine the endpoint based on document type
+            // Determine endpoints based on document type
             string documentEndpoint;
             string? detailsEndpoint = null;
 
@@ -61,7 +89,7 @@ public class DocumentProxyService : IDocumentProxyService
                 case "OC":
                 case "REQUIS":
                     documentEndpoint = $"{baseUrl}/api/Ocandreq/{documentId}";
-                    detailsEndpoint = $"{baseUrl}/api/Detailsreqoc/movement/{documentId}";
+                    detailsEndpoint = $"{WAREHOUSE_BASE_URL}/api/Detailsreqoc/{documentId}";
                     break;
                 case "INCOME":
                 case "EXPENSE":
@@ -75,38 +103,55 @@ public class DocumentProxyService : IDocumentProxyService
             _logger.LogInformation("Fetching document from {Endpoint}", documentEndpoint);
 
             // Get main document
-            var docResponse = await _httpClient.GetAsync(documentEndpoint);
-            if (!docResponse.IsSuccessStatusCode)
+            var document = await FetchJsonAsync(documentEndpoint);
+            if (document == null)
             {
-                var errorContent = await docResponse.Content.ReadAsStringAsync();
-                _logger.LogError("Failed to fetch document. Status: {Status}, Response: {Response}",
-                    docResponse.StatusCode, errorContent);
+                _logger.LogError("Failed to fetch main document from {Endpoint}", documentEndpoint);
                 return null;
             }
 
-            var docJson = await docResponse.Content.ReadAsStringAsync();
-            var document = JsonSerializer.Deserialize<JsonElement>(docJson);
-
-            // Get details if applicable
+            // Get details (items)
             JsonElement? details = null;
             if (!string.IsNullOrEmpty(detailsEndpoint))
             {
-                var detailsResponse = await _httpClient.GetAsync(detailsEndpoint);
-                if (detailsResponse.IsSuccessStatusCode)
+                details = await FetchJsonAsync(detailsEndpoint);
+            }
+
+            // Get company data (Root) - extract idCompany from document
+            JsonElement? companyData = null;
+            if (document.Value.TryGetProperty("idCompany", out var idCompanyProp))
+            {
+                var idCompany = idCompanyProp.GetInt32();
+                companyData = await FetchJsonAsync($"{SMP_BASE_URL}/api/Root/{idCompany}");
+            }
+
+            // Get provider data - extract idProvider from document
+            JsonElement? providerData = null;
+            if (document.Value.TryGetProperty("idProvider", out var idProviderProp))
+            {
+                var idProvider = idProviderProp.GetInt32();
+                if (idProvider > 0)
                 {
-                    var detailsJson = await detailsResponse.Content.ReadAsStringAsync();
-                    details = JsonSerializer.Deserialize<JsonElement>(detailsJson);
+                    providerData = await FetchJsonAsync($"{SMP_BASE_URL}/api/Providers/{idProvider}");
                 }
-                else
-                {
-                    _logger.LogWarning("Failed to fetch details from {Endpoint}", detailsEndpoint);
-                }
+            }
+
+            // Get materials (for mapping descriptions) - only for OC/REQUIS
+            JsonElement? materials = null;
+            if ((documentCode.ToUpper() == "OC" || documentCode.ToUpper() == "REQUIS") &&
+                document.Value.TryGetProperty("idCompany", out var idCompanyForMat))
+            {
+                var idCompany = idCompanyForMat.GetInt32();
+                materials = await FetchJsonAsync($"{WAREHOUSE_BASE_URL}/api/Material/2fields?idCompany={idCompany}");
             }
 
             return new
             {
                 document,
-                details
+                details,
+                companyData,
+                providerData,
+                materials
             };
         }
         catch (Exception ex)
