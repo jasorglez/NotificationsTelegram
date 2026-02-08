@@ -74,6 +74,29 @@ public class DocumentProxyService : IDocumentProxyService
         return null;
     }
 
+    private async Task<string?> FetchImageAsBase64Async(string? imageUrl)
+    {
+        if (string.IsNullOrEmpty(imageUrl)) return null;
+        try
+        {
+            // Use a separate HttpClient without auth headers for public image URLs
+            using var imageClient = new HttpClient();
+            var response = await imageClient.GetAsync(imageUrl);
+            if (response.IsSuccessStatusCode)
+            {
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+                var contentType = response.Content.Headers.ContentType?.MediaType ?? "image/png";
+                return $"data:{contentType};base64,{Convert.ToBase64String(bytes)}";
+            }
+            _logger.LogWarning("Failed to fetch image {Url}. Status: {Status}", imageUrl, response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error fetching image {Url}", imageUrl);
+        }
+        return null;
+    }
+
     public async Task<object?> GetDocumentDataAsync(string microservice, string baseUrl, string documentCode, int documentId)
     {
         try
@@ -119,10 +142,38 @@ public class DocumentProxyService : IDocumentProxyService
 
             // Get company data (Root) - extract idCompany from document
             JsonElement? companyData = null;
+            string? logoBase64 = null;
+            string? logo2Base64 = null;
+            string? watermarkBase64 = null;
+
             if (document.Value.TryGetProperty("idCompany", out var idCompanyProp))
             {
                 var idCompany = idCompanyProp.GetInt32();
                 companyData = await FetchJsonAsync($"{SMP_BASE_URL}/api/Root/{idCompany}");
+
+                // Fetch logos as base64
+                if (companyData.HasValue)
+                {
+                    string? pictureUrl = null, picture2Url = null, picture3Url = null;
+
+                    if (companyData.Value.TryGetProperty("picture", out var picProp) && picProp.ValueKind == JsonValueKind.String)
+                        pictureUrl = picProp.GetString();
+                    if (companyData.Value.TryGetProperty("picture2", out var pic2Prop) && pic2Prop.ValueKind == JsonValueKind.String)
+                        picture2Url = pic2Prop.GetString();
+                    if (companyData.Value.TryGetProperty("picture3", out var pic3Prop) && pic3Prop.ValueKind == JsonValueKind.String)
+                        picture3Url = pic3Prop.GetString();
+
+                    // Fetch images in parallel
+                    var logoTask = FetchImageAsBase64Async(pictureUrl);
+                    var logo2Task = FetchImageAsBase64Async(picture2Url);
+                    var watermarkTask = FetchImageAsBase64Async(picture3Url);
+
+                    await Task.WhenAll(logoTask, logo2Task, watermarkTask);
+
+                    logoBase64 = logoTask.Result;
+                    logo2Base64 = logo2Task.Result ?? logoBase64;
+                    watermarkBase64 = watermarkTask.Result;
+                }
             }
 
             // Get provider data - extract idProvider from document
@@ -151,7 +202,10 @@ public class DocumentProxyService : IDocumentProxyService
                 details,
                 companyData,
                 providerData,
-                materials
+                materials,
+                logoBase64,
+                logo2Base64,
+                watermarkBase64
             };
         }
         catch (Exception ex)
