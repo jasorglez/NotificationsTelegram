@@ -103,9 +103,17 @@ public class TelegramService : ITelegramService
 
             messageText += $"\n_Fecha: {notification.RespondedAt:dd/MM/yyyy HH:mm}_";
 
-            // Optional: Add view button
+            // Add view button using public access token if available
             InlineKeyboardMarkup? replyMarkup = null;
-            if (!string.IsNullOrEmpty(notification.DocumentType?.ViewUrl))
+            if (!string.IsNullOrEmpty(notification.AccessToken))
+            {
+                var viewUrl = $"https://biapp.com.mx/public/doc?token={notification.AccessToken}";
+                replyMarkup = new InlineKeyboardMarkup(new[]
+                {
+                    InlineKeyboardButton.WithUrl("👁️ Ver documento", viewUrl)
+                });
+            }
+            else if (!string.IsNullOrEmpty(notification.DocumentType?.ViewUrl))
             {
                 var viewUrl = notification.DocumentType.ViewUrl
                     .Replace("{folio}", notification.Folio)
